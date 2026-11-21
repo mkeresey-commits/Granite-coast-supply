@@ -1,0 +1,49 @@
+/* Granite Coast Supply. Tokens and the public catalog. DESIGN.md explains the choices. */
+@font-face{font-family:"Instrument Serif";src:url(/fonts/instrument-serif-400-normal.woff2) format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"Instrument Serif";src:url(/fonts/instrument-serif-400-italic.woff2) format("woff2");font-weight:400;font-style:italic;font-display:swap}
+@font-face{font-family:"IBM Plex Sans";src:url(/fonts/ibm-plex-sans-latin-400-normal.woff2) format("woff2");font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:"IBM Plex Sans";src:url(/fonts/ibm-plex-sans-latin-400-italic.woff2) format("woff2");font-weight:400;font-style:italic;font-display:swap}
+@font-face{font-family:"IBM Plex Sans";src:url(/fonts/ibm-plex-sans-latin-500-normal.woff2) format("woff2");font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:"IBM Plex Sans";src:url(/fonts/ibm-plex-sans-latin-600-normal.woff2) format("woff2");font-weight:600;font-style:normal;font-display:swap}
+:root{--felt:#f4f6f5;--card:#fff;--spruce:#14282b;--slate:#55666a;--line:#d3dbd9;--morpho:#1b56c9;--brass:#8a6417;--moss:#1f7a4d;--rust:#b3261e;--glass:#e7eeec;
+  --serif:"Instrument Serif",Georgia,serif;--sans:"IBM Plex Sans",system-ui,sans-serif}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+body{margin:0;background:var(--felt);color:var(--spruce);font:400 17px/1.55 var(--sans)}
+::selection{background:var(--morpho);color:#fff}
+a{color:var(--morpho);text-underline-offset:3px;text-decoration-thickness:1px}a:hover{color:var(--spruce)}
+:focus-visible{outline:2px solid var(--morpho);outline-offset:3px;border-radius:2px}
+.skip{position:absolute;left:-999px;top:8px;background:var(--card);padding:8px 12px;border-radius:6px;z-index:9}.skip:focus{left:12px}
+img{max-width:100%;height:auto;display:block}
+
+/* ---- public catalog */
+.shell{max-width:1180px;margin:0 auto;padding:0 24px}
+.mast{padding:22px 0 0;display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap}
+.mast .name{font:400 22px/1 var(--serif);color:var(--spruce);text-decoration:none;letter-spacing:.01em}
+.mast nav{display:flex;gap:20px;font-size:15px}
+.open{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,4fr);gap:48px;align-items:end;padding:64px 0 44px;border-bottom:1px solid var(--line)}
+h1{font:400 clamp(44px,7.4vw,96px)/.96 var(--serif);letter-spacing:-.015em;margin:0;text-wrap:balance}
+.open p{margin:0 0 14px;max-width:44ch;color:var(--slate)}
+.open p.first{color:var(--spruce);font-size:19px}
+h2{font:400 clamp(28px,3.6vw,40px)/1.05 var(--serif);margin:0 0 6px;text-wrap:balance}
+.sec{padding:52px 0 8px}
+.sec>p{max-width:62ch;color:var(--slate);margin:0 0 26px}
+/* each piece sits under a dome: the photo is cut to the outline of a glass cloche, on a turned base */
+.pieces{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:44px 30px;padding:8px 0 20px;list-style:none;margin:0}
+.piece{display:grid;gap:0;align-content:start}
+.dome{position:relative;aspect-ratio:4/5;background:var(--glass);border-radius:50% 50% 6px 6px / 38% 38% 6px 6px;overflow:hidden;border:1px solid var(--line)}
+.dome img{width:100%;height:100%;object-fit:cover}
+.dome::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 10px 0 24px -14px rgba(255,255,255,.9),inset -8px 0 20px -14px rgba(20,40,43,.25);pointer-events:none}
+.base{height:9px;margin:0 -7px;background:var(--spruce);border-radius:3px 3px 5px 5px}
+/* the label under it reads like a collection label: name, then the binomial in italics, then where it is from */
+.tag{padding:14px 2px 0;display:grid;gap:3px}
+.tag h3{font:500 17px/1.3 var(--sans);margin:0}
+.tag .bi{font:italic 400 19px/1.25 var(--serif)}
+.tag .meta{font-size:14px;color:var(--slate)}
+.tag .more{font-size:14.5px;color:var(--slate);margin:6px 0 0}
+.empty{padding:36px 0 20px;color:var(--slate);max-width:56ch}
+.rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:30px 44px;padding:6px 0 30px}
+.rules h3{font:500 17px/1.3 var(--sans);margin:0 0 4px}.rules p{margin:0;color:var(--slate);font-size:16px;max-width:44ch}
+footer{border-top:1px solid var(--line);margin-top:40px;padding:26px 0 44px;font-size:14.5px;color:var(--slate);display:flex;gap:10px 24px;flex-wrap:wrap;justify-content:space-between}
+@media (max-width:760px){.open{grid-template-columns:1fr;gap:22px;padding:40px 0 30px}.pieces{grid-template-columns:repeat(2,minmax(0,1fr));gap:30px 16px}.shell{padding:0 18px}.sec{padding-top:38px}}
+@media (max-width:360px){.pieces{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}

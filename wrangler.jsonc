@@ -1,0 +1,14 @@
+{
+  // Cloudflare builds this repository on every push to main: "npx wrangler deploy". There is no build step.
+  // /desk is private. worker/index.js refuses it without a valid Cloudflare Access login for an allowed email.
+  // ACCESS_TEAM, ACCESS_AUD and ALLOW_EMAILS are set on the Worker in Cloudflare and kept across deploys (keep_vars).
+  // Without them the desk answers "Private" to everyone.
+  "name": "gcsupply",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-11-01",
+  "keep_vars": true,
+  "workers_dev": true,
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  "d1_databases": [{ "binding": "DB", "database_name": "gcsupply", "database_id": "71bdb166-b675-40a2-89d6-2b26eab54978" }],
+  "vars": { "INDEX_OK": "no" }
+}

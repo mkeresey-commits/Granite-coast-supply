@@ -1,0 +1,14 @@
+{
+  "name": "granite-coast-supply",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8799 --var DEV_USER:you@example.com",
+    "test": "node tools/smoke.mjs",
+    "test:flows": "node tools/flows.cjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.166.0"
+  }
+}
