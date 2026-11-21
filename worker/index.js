@@ -3,6 +3,7 @@
 // Private: everything under /desk and /api/desk. A request gets through only when Cloudflare Access has logged the
 // visitor in AND the email is on the allow list. With no Access settings the desk is locked, so a mistake fails closed.
 import { TYPES, isPublic, publicProduct } from '../public/desk/lib/model.js';
+import { market, connectBack } from './market.js';
 
 const b64 = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(s.length / 4) * 4, '=')), c => c.charCodeAt(0));
 let KEYS = null, KEYS_AT = 0;
@@ -54,6 +55,7 @@ async function desk(request, env, url, who) {
   const d = await db(env), path = url.pathname.slice('/api/desk'.length), write = request.method !== 'GET';
   // a change must come from the desk page itself: same origin, and the header a plain form cannot send
   if (write && (request.headers.get('x-desk') !== '1' || (request.headers.get('origin') && request.headers.get('origin') !== url.origin))) return J({ error: 'not from the desk' }, 403);
+  if (path.startsWith('/market/')) return market(request, env, d, url, path.slice('/market'.length));
   if (path === '/all' && !write) {
     const all = (await d.prepare('SELECT data FROM objects').all()).results.map(r => JSON.parse(r.data));
     return J({ me: who.email, objects: all });
@@ -91,6 +93,7 @@ export default {
         let who; try { who = await whoIs(request, env, url); } catch (e) { who = { ok: false, why: 'check failed' }; }
         if (!who.ok) return locked();
         if (p.startsWith('/api/desk')) return await desk(request, env, url, who);
+        if (/^\/desk\/connect\/(ebay|etsy)$/.test(p) && request.method === 'GET') return await connectBack(request, env, await db(env), url);
         return withSec(await env.ASSETS.fetch(request), { 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow' });
       }
       if (request.method !== 'GET' && request.method !== 'HEAD') return J({ error: 'read only' }, 405);

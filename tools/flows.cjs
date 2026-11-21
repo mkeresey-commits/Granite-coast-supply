@@ -8,7 +8,9 @@ const { join } = require('node:path');
 let pass = 0, fail = 0; const ok = (c, name) => { if (c) pass++; else { fail++; console.log('  FAIL ' + name); } };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const until = async (page, fn, ms = 10000, arg) => { try { await page.waitForFunction(fn, arg, { timeout: ms }); return true; } catch (e) { return false; } };
-const serve = (port, dir, open) => spawn('npx', ['wrangler', 'dev', '--local', '--port', String(port), '--persist-to', dir, '--inspector-port', String(port + 1000), ...(open ? ['--var', 'DEV_USER:tester@example.com'] : [])], { stdio: 'ignore', detached: true });
+const MOCK = 8820, mockVars = ['EBAY_CLIENT_ID:made-up-id', 'EBAY_CLIENT_SECRET:made-up-secret', 'EBAY_RUNAME:made-up-runame', 'ETSY_KEYSTRING:made-up-key', 'ETSY_SECRET:made-up-secret', ...['EBAY_API', 'EBAY_AUTH', 'ETSY_API', 'ETSY_AUTH'].map(k => `${k}:http://localhost:${MOCK}`)];
+const serve = (port, dir, open) => spawn('npx', ['wrangler', 'dev', '--local', '--port', String(port), '--persist-to', dir, '--inspector-port', String(port + 1000), ...(open ? ['DEV_USER:tester@example.com', ...mockVars].flatMap(v => ['--var', v]) : [])], { stdio: 'ignore', detached: true });
+const mockLog = async () => (await fetch(`http://localhost:${MOCK}/_log`)).json();
 const up = async (port) => { for (let i = 0; i < 80; i++) { try { const r = await fetch(`http://localhost:${port}/api/catalog`); if (r.ok) return true; } catch (e) { /* not up yet */ } await sleep(500); } return false; };
 
 async function desk(browser, name, opts, port, photo, first) {
@@ -85,7 +87,59 @@ async function desk(browser, name, opts, port, photo, first) {
   await ctx.close();
 }
 
+
+// ---- straight to eBay and Etsy, against stand-ins for both
+async function autopost(browser, port) {
+  console.log('\nAutomatic posting');
+  const B = `http://localhost:${port}`, ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } }), page = await ctx.newPage(), errs = [];
+  page.on('pageerror', e => errs.push(e.message)); page.on('console', m => { if (m.type() === 'error' && !/409|422/.test(m.text())) errs.push(m.text()); });
+  const saved = () => until(page, () => /^Saved/.test(document.querySelector('#status').textContent));
+  await page.goto(B + '/desk/#settings'); await until(page, () => !!document.querySelector('[data-connect="ebay"]'));
+  ok(!!(await page.$('[data-connect="ebay"]')) && !!(await page.$('[data-connect="etsy"]')), 'with the app keys in, Settings offers to connect eBay and Etsy');
+  // two fresh pieces: one for the button, one that the Etsy stand-in will price wrongly
+  await page.evaluate(async () => { const D = window.__desk.D, src = D.product[0], mk = (id, sku, name, blurb) => fetch('/api/desk/obj/product/' + id, { method: 'PUT', headers: { 'x-desk': '1', 'content-type': 'application/json' }, body: JSON.stringify({ ...src, id, sku, name, blurb, stock: 1, oneOff: true, ready: true, channels: {} }) });
+    await mk('pauto', 'GCS-0900', 'Made-up auto piece', 'A made-up piece for the posting test.'); await mk('pwrong', 'GCS-0901', 'Made-up wrong price piece', 'WRONGPRICE made-up piece.'); });
+  await page.click('[data-connect="ebay"]'); ok(await until(page, () => /eBay is connected/.test(document.querySelector('#status').textContent) && !!window.__desk), 'signing in to eBay comes back connected');
+  ok(await until(page, () => !!document.querySelector('[data-site="ebay"] select[data-o="fulfillmentPolicyId"] option[value="F1"]')), 'the shop\'s own eBay policies and location load to choose from');
+  for (const [k, v] of [['fulfillmentPolicyId', 'F1'], ['paymentPolicyId', 'P1'], ['returnPolicyId', 'R1'], ['merchantLocationKey', 'home']]) await page.selectOption(`[data-site="ebay"] select[data-o="${k}"]`, v);
+  await page.fill('[data-site="ebay"] textarea[data-o="aspects"]', 'Brand: Unbranded'); await saved();
+  await page.click('[data-connect="etsy"]'); ok(await until(page, () => /Etsy is connected/.test(document.querySelector('#status').textContent) && !!window.__desk), 'signing in to Etsy comes back connected');
+  ok(await until(page, () => !!document.querySelector('[data-site="etsy"] select[data-o="shippingProfileId"] option[value="31"]')) && /Connected to MadeUpShop/.test(await page.textContent('[data-site="etsy"]')), 'the Etsy shop is named and its shipping and processing profiles load');
+  await page.selectOption('[data-site="etsy"] select[data-o="shippingProfileId"]', '31'); await page.selectOption('[data-site="etsy"] select[data-o="readinessStateId"]', '41');
+  await page.fill('#taxQ', 'taxidermy'); await page.click('#taxGo'); ok(await until(page, () => !!document.querySelector('#taxSel option[value="55"]')), 'an Etsy category is found by searching its name');
+  await page.selectOption('#taxSel', '55'); await saved(); await page.waitForTimeout(900);
+
+  await page.goto(B + '/desk/#post'); ok(await until(page, () => !!document.querySelector('#autoGo') && !document.querySelector('#autoGo').disabled), 'the Post page shows one button for everything waiting');
+  ok(/saved as drafts for you to publish/.test(await page.textContent('#auto')), 'it says Etsy listings will be drafts while "go live" is off');
+  const want = await page.evaluate(() => +document.querySelector('#auto b').textContent);
+  await page.click('#autoGo'); ok(await until(page, (n) => document.querySelectorAll('#resList li').length === n && !document.querySelector('#autoGo').disabled, 30000, want), `one click posts all ${want} waiting listings`);
+  const res = await page.evaluate(() => { const D = window.__desk.D, a = D.product.find(p => p.id === 'pauto'), w = D.product.find(p => p.id === 'pwrong'); return { ebay: a.channels.ebay, etsy: a.channels.etsy, wrong: w.channels.etsy, text: document.querySelector('#resList').textContent }; });
+  ok(res.ebay.status === 'listed' && /^https:\/\/www\.ebay\.com\/itm\/1100/.test(res.ebay.url) && /^OFFER/.test(res.ebay.offerId), 'the piece is live on eBay with its listing link kept');
+  ok(res.etsy.status === 'paused' && res.etsy.listingId && /etsy\.com\/listing/.test(res.etsy.url) && /saved as a draft/.test(res.text), 'the piece is on Etsy as a draft, with its link kept');
+  ok(res.wrong.status === 'paused' && /Etsy shows the price as \$9800\.00, not \$98\.00/.test(res.text), 'a listing Etsy priced wrongly is left as a draft and says so');
+  const L = await mockLog(), offer = L.log.find(x => x.m === 'POST' && /\/offer$/.test(x.p) && /GCS-0900/.test(x.body)), ob = JSON.parse(offer.body), item = JSON.parse(L.log.find(x => x.m === 'PUT' && /inventory_item\/GCS-0900/.test(x.p)).body), el = L.log.find(x => x.m === 'POST' && /\/shops\/777\/listings$/.test(x.p) && /auto\+piece/.test(x.body)), eb = new URLSearchParams(el.body);
+  ok(ob.pricingSummary.price.value === '98.00' && ob.categoryId === '12345' && ob.listingPolicies.fulfillmentPolicyId === 'F1' && ob.merchantLocationKey === 'home' && ob.marketplaceId === 'EBAY_US' && item.product.aspects.Brand[0] === 'Unbranded' && item.product.aspects.Species[0] === 'Morpho menelaus' && /\/img\/[a-f0-9]{24}\.jpg/.test(item.product.imageUrls[0]) && item.condition === 'NEW', 'eBay got the price, category, policies, location, the species and a photo link');
+  ok(eb.get('price') === '98.00' && eb.get('taxonomy_id') === '55' && eb.get('shipping_profile_id') === '31' && eb.get('readiness_state_id') === '41' && eb.get('who_made') === 'i_did' && el.key === 'made-up-key:made-up-secret' && Object.values(L.listings).every(x => x.images === 1 && x.state === 'draft'), 'Etsy got the price, category, both profiles, the key in its two-part form, and one photo for each listing');
+  ok(!JSON.stringify(await (await fetch(B + '/api/desk/all')).json()).includes('ebay-refresh') && !(await page.content()).includes('etsy-refresh'), 'the sign-in tokens never reach a page');
+
+  // going live on Etsy, then a sold one-off comes down
+  await page.goto(B + '/desk/#settings'); await until(page, () => !!document.querySelector('[data-site="etsy"] input[data-o="live"]')); await page.check('[data-site="etsy"] input[data-o="live"]'); await saved(); await page.waitForTimeout(900);
+  await page.evaluate(async () => { const src = window.__desk.D.product.find(p => p.id === 'pauto'); await fetch('/api/desk/obj/product/plive', { method: 'PUT', headers: { 'x-desk': '1', 'content-type': 'application/json' }, body: JSON.stringify({ ...src, id: 'plive', sku: 'GCS-0902', name: 'Made-up live piece', channels: {} }) }); });
+  await page.reload(); await until(page, () => !!window.__desk); await page.goto(B + '/desk/#post/etsy'); ok(await until(page, () => !!document.querySelector('#chAuto')), 'the Etsy page has its own post button');
+  await page.click('#chAuto'); ok(await until(page, () => window.__desk.D.product.find(p => p.id === 'plive').channels.etsy && window.__desk.D.product.find(p => p.id === 'plive').channels.etsy.status === 'listed', 20000), 'with "go live" on, the piece goes live on Etsy');
+  ok(Object.values((await mockLog()).listings).some(x => x.state === 'active' && /live piece/.test(x.title)), 'Etsy was told to make it active only after the price read back right');
+  await page.goto(B + '/desk/#piece/plive'); await until(page, () => !!document.querySelector('input[data-k="stock"]')); await page.fill('input[data-k="stock"]', '0'); await saved(); await page.waitForTimeout(800);
+  await page.goto(B + '/desk/#today'); ok(await until(page, () => [...document.querySelectorAll('.todo li')].some(l => /Take down Made-up live piece/.test(l.textContent))), 'a sold one-off that is still up leads the Today list');
+  await page.goto(B + '/desk/#piece/plive'); ok(await until(page, () => !!document.querySelector('#pDownGo')), 'the piece offers to take itself down');
+  await page.click('#pDownGo'); ok(await until(page, () => window.__desk.D.product.find(p => p.id === 'plive').channels.etsy.status === 'sold', 15000), 'taking it down marks it sold there');
+  ok(Object.values((await mockLog()).listings).some(x => x.state === 'inactive' && /live piece/.test(x.title)), 'Etsy was told to switch the listing off');
+  const twice = await page.evaluate(async () => { const r = await fetch('/api/desk/market/post/ebay/pauto', { method: 'POST', headers: { 'x-desk': '1' } }); return { s: r.status, j: await r.json() }; }); ok(twice.s === 409 && /Already listed/.test(twice.j.error), 'a piece cannot be posted twice to the same site');
+  ok(errs.length === 0, `no script errors (${errs.slice(0, 2).join(' | ')})`);
+  await ctx.close();
+}
+
 (async () => {
+  const mock = await require('./mock-markets.cjs')(MOCK, 'http://localhost:8811');
   const dir = mkdtempSync(join(tmpdir(), 'gcs-')), servers = [serve(8811, dir, true), serve(8812, dir + '-locked', false)]; let browser;
   try {
     ok(await up(8811) && await up(8812), 'both local servers start');
@@ -94,7 +148,11 @@ async function desk(browser, name, opts, port, photo, first) {
     await desk(browser, 'desktop', { viewport: { width: 1440, height: 900 } }, 8811, photo, true);
     await desk(browser, 'phone', { ...devices['iPhone 13'] }, 8811, photo);
 
+    await autopost(browser, 8811);
+
     console.log('\nThe locked door');
+    for (const path of ['/api/desk/market/status', '/desk/connect/ebay?code=x&state=y']) { const r = await fetch('http://localhost:8812' + path, { redirect: 'manual' }); ok(r.status === 403, `without a login, ${path.split('?')[0]} answers Private`); }
+    const noKeys = await fetch('http://localhost:8811/api/desk/market/connect/ebay', { method: 'POST' }); ok(noKeys.status === 403, 'connecting a site must come from the desk page');
     for (const path of ['/desk/', '/desk/desk.js', '/desk/lib/model.js', '/api/desk/all']) { const r = await fetch('http://localhost:8812' + path); ok(r.status === 403 && !/blankProduct|objects/.test(await r.text()), `without a login, ${path} answers Private`); }
     const w = await fetch('http://localhost:8812/api/desk/obj/store/x1', { method: 'PUT', headers: { 'x-desk': '1' }, body: '{}' }); ok(w.status === 403, 'without a login, nothing can be written');
     const bad = await fetch('http://localhost:8811/api/desk/obj/store/x1', { method: 'PUT', body: '{}' }); ok(bad.status === 403, 'a write that does not come from the desk page is refused, even when signed in');
@@ -108,6 +166,6 @@ async function desk(browser, name, opts, port, photo, first) {
     await pg.goto('http://localhost:8811/'); ok(await until(pg, () => !!document.querySelector('a[href^="mailto:shops@example.com"]')) && errs.length === 0, `once an email is set, the catalog shows it as a mail link, with no script errors (${errs.slice(0, 2).join(' | ')})`);
     await c.close();
   } catch (e) { fail++; console.log('  FAIL the run stopped: ' + e.message); }
-  finally { if (browser) await browser.close(); for (const s of servers) { try { process.kill(-s.pid); } catch (e) { /* gone */ } } try { rmSync(dir, { recursive: true, force: true }); rmSync(dir + '-locked', { recursive: true, force: true }); } catch (e) { /* fine */ } }
+  finally { if (browser) await browser.close(); mock.close(); for (const s of servers) { try { process.kill(-s.pid); } catch (e) { /* gone */ } } try { rmSync(dir, { recursive: true, force: true }); rmSync(dir + '-locked', { recursive: true, force: true }); } catch (e) { /* fine */ } }
   console.log(`\nflows: ${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);
 })();

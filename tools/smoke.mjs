@@ -48,6 +48,16 @@ const fa = C.fileFor('faire', [good], set, 'https://x.test').text; ok(/Wholesale
 ok(C.csv([['a,b', 'he said "hi"', 'two\nlines']]) === '"a,b","he said ""hi""","two\nlines"\r\n', 'spreadsheet cells with commas, quotes and line breaks are quoted');
 ok(C.toPost([good, { ...good, id: 'p2', channels: { etsy: { status: 'listed' } } }, { ...good, id: 'p3', ready: false }], 'etsy', set).length === 1, 'the to-post list leaves out what is listed already and what is not ready');
 
+// ---- straight to eBay and Etsy
+{ const K = await import('../worker/market.js'), full = { channels: { ebay: { category: '12345', fulfillmentPolicyId: 'F', paymentPolicyId: 'P', returnPolicyId: 'R', merchantLocationKey: 'home', aspects: 'Brand: Unbranded\nType: Butterfly: mounted\n\nbad line' }, etsy: { taxonomyId: 55, shippingProfileId: 31, readinessStateId: 41 } } };
+  const a = K.aspectsOf(full.channels.ebay.aspects); ok(a.Brand[0] === 'Unbranded' && a.Type[0] === 'Butterfly: mounted' && Object.keys(a).length === 2, 'eBay item specifics are read one to a line');
+  const b = K.ebayBodies(good, full, 'https://x.test'); ok(b.offer.pricingSummary.price.value === '98.00' && b.offer.pricingSummary.price.currency === 'USD' && b.offer.format === 'FIXED_PRICE' && b.offer.availableQuantity === 1 && b.item.product.aspects.Species[0] === 'Morpho menelaus' && b.item.product.title.length <= 80 && b.item.product.imageUrls.length === 2 && b.item.packageWeightAndSize.weight.unit === 'OUNCE', 'the eBay listing carries the retail price in dollars, the stock, the species and the photos');
+  let msg = ''; try { K.ebayBodies(good, { channels: { ebay: { category: '1' } } }, ''); } catch (e) { msg = e.message; } ok(/still needs a shipping policy, a payment policy, a return policy, an item location/.test(msg), 'eBay posting names every setting still missing');
+  const e = K.etsyBody(good, full, 'https://x.test'); ok(e.price === '98.00' && e.quantity === 1 && e.who_made === 'i_did' && e.type === 'physical' && e.tags.split(',').length <= 13 && e.title.length <= 140 && e.taxonomy_id === 55 && e.should_auto_renew === 'false', 'the Etsy listing carries the price in dollars, never auto-renews, and stays inside the title and tag limits');
+  msg = ''; try { K.etsyBody(good, { channels: {} }, ''); } catch (x) { msg = x.message; } ok(/Etsy still needs a category, a shipping profile, a processing profile/.test(msg), 'Etsy posting names every setting still missing');
+  const src = readFileSync(new URL('../worker/market.js', import.meta.url), 'utf8'); ok(/Math\.abs\(got - \+body\.price\) > 0\.005/.test(src) && src.indexOf('Left as a draft: Etsy shows the price') < src.indexOf("{ state: 'active' }") && /local\(url\) && env\.EBAY_API/.test(src), 'Etsy goes live only after the price reads back right, and stand-in addresses work on a local address only');
+}
+
 // ---- stores, orders, runs
 const st = { ...M.blankStore(), id: 's1', name: 'Made-up Shop', town: 'Bangor', region: 'Bangor area', stage: 'Terms agreed', next: 'Deliver first order', due: '2026-11-01' }, st2 = { ...M.blankStore(), id: 's2', name: 'Other Made-up Shop', town: 'Ellsworth', region: 'Downeast and Acadia' };
 ok(!M.isAccount(st) && M.isAccount({ ...st, stage: 'Stocked' }), 'a store is an account only once it is stocked');

@@ -37,6 +37,22 @@ const copyBtn = (text, label = 'Copy') => `<button type="button" class="ghost co
 document.addEventListener('click', async (e) => { const b = e.target.closest('[data-copy]'); if (!b) return; try { await navigator.clipboard.writeText(b.dataset.copy); const was = b.textContent; b.textContent = 'Copied'; setTimeout(() => { b.textContent = was; }, 1200); } catch (x) { say('Could not copy. Select the text and copy it by hand.', true); } });
 function download(name, text, type = 'text/csv') { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
 
+// ---- straight to eBay and Etsy, when they are connected under Settings
+let MK = { ebay: {}, etsy: {} };
+const AUTO = ['ebay', 'etsy'], live = (id) => !!(MK[id] && MK[id].connected);
+const swap = (o) => { const mine = byId(o.type, o.id); if (mine) { clearTimeout(timers[o.id]); Object.assign(mine, o); } return mine; };
+async function postOne(p, site) { try { const r = await api(`/market/post/${site}/${p.id}`, { method: 'POST' }); swap(r.object); const cs = r.object.channels[site]; return { ok: true, p, site, url: cs.url, status: cs.status, note: r.note }; } catch (e) { return { ok: false, p, site, note: e.message }; } }
+async function downOne(p, site) { try { const r = await api(`/market/takedown/${site}/${p.id}`, { method: 'POST' }); swap(r.object); return { ok: true, p, site, note: 'Taken down.' }; } catch (e) { return { ok: false, p, site, note: e.message }; } }
+// every site this piece was posted to from the desk and is still up on
+const upOn = (p) => AUTO.filter(s => live(s) && ['listed', 'paused'].includes(statusOf(p, s)) && ((p.channels[s] || {}).offerId || (p.channels[s] || {}).listingId) && !(p.channels[s] || {}).off);
+async function takeDown(p) { const out = []; for (const s of upOn(p)) out.push(await downOne(p, s)); return out; }
+const resultRow = (r) => `<li class="${r.ok ? '' : 'bad'}"><b>${h(channel(r.site).name)}</b> · ${h(r.p.name)}: ${r.ok ? (r.status === 'listed' ? 'listed' : r.status === 'paused' && r.url ? 'saved as a draft' : 'done') : 'not posted'}${r.url ? ` <a href="${h(r.url)}" target="_blank" rel="noopener">Open</a>` : ''}${r.note ? ` <span class="quiet">${h(r.note)}</span>` : ''}</li>`;
+async function postMany(pairs, box, btn) {
+  btn.disabled = true; box.innerHTML = '<ul class="plain results" id="resList"></ul>'; let n = 0, bad = 0;
+  for (const [p, site] of pairs) { say(`Posting ${++n} of ${pairs.length}`); const r = await postOne(p, site); if (!r.ok) bad++; $('#resList').insertAdjacentHTML('beforeend', resultRow(r)); }
+  say(bad ? `${pairs.length - bad} posted, ${bad} not` : `${pairs.length} posted`, !!bad); btn.disabled = false;
+}
+
 // ---- today
 function vToday() {
   const list = todayList({ products: D.product, stores: D.store, orders: D.order }, CHANNELS), accounts = D.store.filter(isAccount).length, ready = D.product.filter(p => p.ready).length, listed = D.product.filter(p => Object.values(p.channels || {}).some(c => c.status === 'listed')).length;
@@ -91,6 +107,7 @@ function vPiece(id) {
       <small>Look each species up before listing: <a href="https://checklist.cites.org/" target="_blank" rel="noopener">CITES checklist</a>, <a href="https://ecos.fws.gov/ecp/" target="_blank" rel="noopener">federal endangered species list</a>. Imported specimens should come with the supplier's copy of the Fish and Wildlife declaration (Form 3-177).</small></fieldset>
     <fieldset class="one"><legend>Can it go out</legend><div id="pCheck"></div><div data-own="flags" id="pFlags"></div></fieldset>
     <fieldset class="one"><legend>Where it is listed</legend><div id="pChan"></div></fieldset>
+    <div id="pDown"></div>
     <p><button type="button" class="ghost danger" id="pDrop">Remove this piece</button></p>
     </div></div>`;
   const photos = () => { $('#pPhotos').innerHTML = p.photos.map((id, i) => `<figure><img src="/img/${id}.jpg" alt="Photo ${i + 1}" width="120" height="120"><figcaption>${i ? `<button type="button" class="ghost" data-first="${i}">Make first</button>` : 'First'} <button type="button" class="ghost" data-rm="${i}">Remove</button></figcaption></figure>`).join('') || '<p class="quiet">No photos yet.</p>'; };
@@ -108,7 +125,8 @@ function vPiece(id) {
     $('#pMoney').textContent = m.marginWholesale != null ? `Wholesale leaves ${usd(m.marginWholesale)} a piece (${Math.round(m.marginWholesalePct * 100)}%).${m.markup ? ` Retail is ${m.markup.toFixed(2)} times wholesale${m.keystone ? '.' : '; stores usually want 2 times or more, as a rule of thumb.'}` : ''}` : 'Fill in cost and wholesale to see what a piece leaves.';
     $('#pTitle').textContent = p.name || 'New piece'; };
   const chan = () => { $('#pChan').innerHTML = CHANNELS.map(ch => { const cs = (p.channels || {})[ch.id] || {}; return `<div class="chrow" data-ch="${ch.id}"><b>${h(ch.name)}</b><select data-cs="status" aria-label="${h(ch.name)} status">${Object.entries({ none: 'Not listed', listed: 'Listed', paused: 'Paused', sold: 'Sold there' }).map(([a, b]) => `<option value="${a}" ${(cs.status || 'none') === a ? 'selected' : ''}>${b}</option>`).join('')}</select><input data-cs="url" type="url" placeholder="Link to the listing" value="${h(cs.url)}" aria-label="${h(ch.name)} listing link">${cs.url ? `<a href="${h(cs.url)}" target="_blank" rel="noopener">Open</a>` : ''}</div>`; }).join(''); };
-  photos(); species(); check(); chan();
+  const down = () => { const up = upOn(p); $('#pDown').innerHTML = up.length ? `<p class="row"><button type="button" id="pDownGo">Take it down on ${up.map(x => channel(x).name).join(' and ')}</button></p><ul class="plain results" id="pDownOut"></ul>` : ''; const b = $('#pDownGo'); if (b) b.onclick = async () => { b.disabled = true; const rs = await takeDown(p); chan(); down(); $('#pDown').insertAdjacentHTML('beforeend', `<ul class="plain results">${rs.map(resultRow).join('')}</ul>`); }; };
+  photos(); species(); check(); chan(); down();
   bind($('#pForm'), p, check); bind($('#pFlags'), p, check);
   $('#pSpecies').addEventListener('input', (e) => { const row = e.target.closest('.sp'), k = e.target.dataset.k; if (!row || !k) return; p.species[+row.dataset.i][k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value; put(p); check(); });
   $('#pSpecies').addEventListener('click', (e) => { const i = e.target.dataset.sprm; if (i == null) return; p.species.splice(+i, 1); put(p); species(); check(); });
@@ -124,11 +142,17 @@ const RULE = { conditions: 'Allowed with conditions', yours: 'Your own rules', u
 function vPost(chId) {
   if (chId && channel(chId)) return vChannel(channel(chId));
   main.innerHTML = `<h1>Post</h1><p class="lead">One record for each piece, cut to fit each site. Pick a site to get its file or its paste sheet. A piece shows here once it is marked ready.</p>
+    <section class="auto" id="auto"></section>
     <div class="cards">${CHANNELS.map(ch => { const can = toPost(D.product, ch.id, set()).length, on = D.product.filter(p => statusOf(p, ch.id) === 'listed').length; return `<article class="card"><h2><a href="#post/${ch.id}">${h(ch.name)}</a></h2><p class="quiet">${h(ch.lane)} · ${ch.how === 'file' ? 'One file for every piece' : 'Paste one piece at a time'}</p>
       <p><b>${can}</b> to post, <b>${on}</b> listed</p><p class="rule ${ch.rule.state}"><b>${RULE[ch.rule.state]}.</b> ${h(ch.rule.text)}${ch.rule.src ? ` <a href="${h(ch.rule.src)}" target="_blank" rel="noopener">Its rules</a>, read ${h(ch.rule.on)}.` : ''}</p></article>`; }).join('')}</div>
     <p class="row"><button type="button" class="ghost" id="allCsv">Download every piece as one spreadsheet</button></p>
     <p class="quiet">Google Shopping, Pinterest and Instagram shopping tags all need a page where a shopper can check out on your own site. This site is a catalog, not a store, so those are not offered here.</p>`;
   $('#allCsv').onclick = () => { const f = fileFor('all', D.product, set(), origin); download(f.name, f.text); };
+  const on = AUTO.filter(live), pairs = on.flatMap(site => toPost(D.product, site, set()).filter(p => !(p.channels[site] || {}).listingId || site === 'ebay').map(p => [p, site]));
+  $('#auto').innerHTML = on.length ? `<h2>Post automatically</h2><p>${on.map(x => channel(x).name).join(' and ')} ${on.length > 1 ? 'are' : 'is'} connected. <b>${pairs.length}</b> listing${pairs.length === 1 ? '' : 's'} waiting.${live('etsy') ? ` Etsy listings ${(set().channels.etsy || {}).live ? 'go live, and Etsy charges its listing fee for each one' : 'are saved as drafts for you to publish'}.` : ''}</p>
+    <p class="row"><button type="button" id="autoGo" ${pairs.length ? '' : 'disabled'}>Post ${pairs.length} listing${pairs.length === 1 ? '' : 's'} now</button></p><div id="autoOut" aria-live="polite"></div>`
+    : `<h2>Post automatically</h2><p class="quiet">Connect eBay or Etsy under <a href="#settings">Settings</a> and this becomes one button for every ready piece.</p>`;
+  const go = $('#autoGo'); if (go) go.onclick = () => postMany(pairs, $('#autoOut'), go);
 }
 function vChannel(ch) {
   const ready = toPost(D.product, ch.id, set()), held = D.product.filter(p => statusOf(p, ch.id) !== 'listed' && !eligible(p, ch, set()).ok), on = D.product.filter(p => statusOf(p, ch.id) === 'listed'), fee = ((set().channels || {})[ch.id] || {}).fee;
@@ -147,6 +171,7 @@ function vChannel(ch) {
     ${held.length ? `<h2>Held back (${held.length})</h2><ul class="plain">${held.map(p => `<li><a href="#piece/${p.id}">${h(p.name || 'Unnamed piece')}</a>: ${h(eligible(p, ch, set()).blockers.join(' '))}</li>`).join('')}</ul>` : ''}
     ${on.length ? `<h2>Listed (${on.length})</h2><ul class="plain">${on.map(p => { const cs = p.channels[ch.id]; return `<li><a href="#piece/${p.id}">${h(p.name)}</a> <span class="quiet">since ${h(cs.on || '')}</span> ${cs.url ? `<a href="${h(cs.url)}" target="_blank" rel="noopener">Open the listing</a>` : ''}</li>`; }).join('')}</ul>` : ''}`;
   const mark = (p, url) => { p.channels = p.channels || {}; p.channels[ch.id] = { ...(p.channels[ch.id] || {}), status: 'listed', on: today(), ...(url ? { url } : {}) }; put(p, true); };
+  if (AUTO.includes(ch.id) && live(ch.id) && ready.length) { $('h2', main).insertAdjacentHTML('afterend', `<p class="row"><button type="button" id="chAuto">Post all ${ready.length} to ${h(ch.name)} now</button></p><div id="chAutoOut" aria-live="polite"></div>`); $('#chAuto').onclick = () => postMany(ready.map(p => [p, ch.id]), $('#chAutoOut'), $('#chAuto')); }
   const f = $('#chFile'); if (f) f.onclick = () => { const x = fileFor(ch.id, ready, set(), origin); download(x.name, x.text); };
   const a = $('#chAll'); if (a) a.onclick = () => { ready.forEach(p => mark(p)); vChannel(ch); };
   main.onclick = (e) => { const id = e.target.dataset.listed; if (!id) return; mark(byId('product', id), e.target.closest('.pf').querySelector('input').value.trim()); vChannel(ch); };
@@ -207,7 +232,7 @@ function vOrder(id) {
     $('#oLines').addEventListener('change', (e) => { const tr = e.target.closest('tr'), k = e.target.dataset.l; if (!tr || !k) return; o.lines[+tr.dataset.i][k] = +e.target.value; put(o); draw(); });
     $('#oLines').addEventListener('click', (e) => { const k = e.target.dataset.lrm; if (k == null) return; o.lines.splice(+k, 1); put(o); draw(); });
     $('#oAdd').onchange = (e) => { const p = byId('product', e.target.value); if (!p) return; o.lines.push({ productId: p.id, qty: Math.max(1, +p.minOrder || 1), price: +(cons ? p.retail : p.wholesale) || 0, sold: 0 }); put(o); draw(); };
-    const nx = $('#oNext'); if (nx) nx.onclick = () => { if (nextStep === 'Delivered') { for (const p of deliver(o, D.product)) { Object.assign(byId('product', p.id), p); put(byId('product', p.id), true); } const st = byId('store', o.storeId); if (st && STAGES.indexOf(st.stage) < STAGES.indexOf('Stocked')) { st.stage = 'Stocked'; put(st, true); } o.delivered = today(); } o.step = nextStep; put(o, true); draw(); };
+    const nx = $('#oNext'); if (nx) nx.onclick = () => { if (nextStep === 'Delivered') { for (const p of deliver(o, D.product)) { Object.assign(byId('product', p.id), p); put(byId('product', p.id), true); } for (const l of o.lines) { const p = byId('product', l.productId); if (p && p.oneOff && +p.stock <= 0 && upOn(p).length) takeDown(p).then(rs => say(rs.every(r => r.ok) ? `${p.name} was taken down online.` : `${p.name} could not be taken down everywhere. Open the piece.`, !rs.every(r => r.ok))); } const st = byId('store', o.storeId); if (st && STAGES.indexOf(st.stage) < STAGES.indexOf('Stocked')) { st.stage = 'Stocked'; put(st, true); } o.delivered = today(); } o.step = nextStep; put(o, true); draw(); };
     $('#oPrint').onclick = () => window.print();
     $('#oDrop').onclick = (e) => { const b = e.target; if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Click again to remove'; return; } drop(o); location.hash = '#orders'; };
   }; draw();
@@ -249,10 +274,39 @@ function vSettings() {
     <fieldset><legend>Added to every listing</legend>${field('Care', 'care', s.care, { wide: true, area: true, rows: 2, ph: 'Keep out of direct sun.' })} ${field('Shipping', 'shipNote', s.shipNote, { wide: true, area: true, rows: 2 })}</fieldset></div>
     <div id="chSet">${CHANNELS.filter(c => c.id !== 'other').map(ch => { const c = s.channels[ch.id] || {}, f = (label, k, o = {}) => `<label>${label} <input data-c="${k}" type="${o.type || 'text'}" value="${h(c[k])}" ${o.type === 'number' ? 'step="any" min="0"' : ''}></label>`;
       return `<fieldset data-ch="${ch.id}"><legend>${h(ch.name)}</legend>${f('Your shop link', 'shop', { type: 'url' })} ${f('Fee they take (%)', 'fee', { type: 'number' })}${ch.id === 'ebay' ? f('Category number', 'category') + f('Item location', 'location') + f('Shipping policy name', 'shipping') + f('Return policy name', 'returns') + f('Payment policy name', 'payment') + '<small class="wide">The category number is in the address of the eBay category page you would list under. The three policy names are under Account, Business policies.</small>' : ''}</fieldset>`; }).join('')}</div>
+    <h2>Automatic posting</h2><div id="conn"></div>
     <fieldset class="one"><legend>Keep a copy</legend><p class="quiet">Everything on the desk as one file you save. Photos are not in it.</p><button type="button" id="backup">Download a backup</button></fieldset>`;
   bind($('#setForm'), s);
   $('#chSet').addEventListener('input', (e) => { const f = e.target.closest('[data-ch]'), k = e.target.dataset.c; if (!f || !k) return; (s.channels[f.dataset.ch] = s.channels[f.dataset.ch] || {})[k] = e.target.value; put(s); });
+  drawConn();
   $('#backup').onclick = () => download(`granite-coast-supply-${today()}.json`, JSON.stringify({ kind: 'gcs-backup', at: new Date().toISOString(), ...D }, null, 1), 'application/json');
+}
+
+
+// the eBay and Etsy connections: sign in, then choose the shop settings each listing will use
+async function drawConn() {
+  const s = set(); s.channels = s.channels || {}; const box = $('#conn'); if (!box) return;
+  const KEYS = { ebay: 'EBAY_CLIENT_ID, EBAY_CLIENT_SECRET and EBAY_RUNAME', etsy: 'ETSY_KEYSTRING and ETSY_SECRET' };
+  const sel = (label, k, list, cur) => `<label>${label} <select data-o="${k}"><option value="">Choose</option>${list.map(x => `<option value="${h(x.id)}" ${String(cur) === String(x.id) ? 'selected' : ''}>${h(x.name)}</option>`).join('')}</select></label>`;
+  box.innerHTML = AUTO.map(site => { const m = MK[site] || {}, name = channel(site).name;
+    return `<fieldset data-site="${site}" class="conn"><legend>${name}</legend>${!m.keys ? `<p class="wide">Not switched on. The ${name} app keys go in Cloudflare as secrets named ${KEYS[site]}. You enter them yourself. The address ${name} must send you back to is <code>${h(m.back || '')}</code>.</p>`
+      : !m.connected ? `<p class="wide">The keys are in. Sign in to ${name} to let the desk post for your shop.</p><p class="wide"><button type="button" data-connect="${site}">Connect ${name}</button></p>`
+      : `<p class="wide good">Connected${m.shop ? ' to ' + h(m.shop) : ''}.</p><div class="wide opts" data-opts="${site}"><p class="quiet">Loading your shop settings</p></div><p class="wide"><button type="button" class="ghost danger" data-disconnect="${site}">Disconnect</button></p>`}</fieldset>`; }).join('');
+  for (const site of AUTO.filter(live)) { const el = $(`[data-opts="${site}"]`), c = s.channels[site] = s.channels[site] || {}; if (!el) continue;
+    try { const o = await api('/market/options/' + site); if (!el.isConnected) return; if (o.shop) { MK[site].shop = o.shop; el.parentElement.querySelector('.good').textContent = 'Connected to ' + o.shop + '.'; }
+      el.innerHTML = site === 'ebay' ? `<div class="optgrid">${sel('Shipping policy', 'fulfillmentPolicyId', o.fulfillment, c.fulfillmentPolicyId)}${sel('Payment policy', 'paymentPolicyId', o.payment, c.paymentPolicyId)}${sel('Return policy', 'returnPolicyId', o.returns, c.returnPolicyId)}${sel('Item location', 'merchantLocationKey', o.locations, c.merchantLocationKey)}
+          <label class="wide">Item specifics for the category, one to a line <textarea data-o="aspects" rows="3" placeholder="Brand: Unbranded&#10;Type: Butterfly">${h(c.aspects)}</textarea><small>eBay asks for certain specifics in each category and says which are missing if a post is refused. The species is added for you. The category number is set above.</small></label></div>${!o.locations.length ? '<p class="warnline">eBay has no item location for this account yet. Add one in Seller Hub, then come back.</p>' : ''}`
+        : `<div class="optgrid">${sel('Shipping profile', 'shippingProfileId', o.shipping, c.shippingProfileId)}${sel('Processing profile', 'readinessStateId', o.readiness, c.readinessStateId)}${sel('Return policy (optional)', 'returnPolicyId', o.returns, c.returnPolicyId)}
+          ${pick('Who made it', 'whoMade', c.whoMade || 'i_did', { i_did: 'I did', collective: 'A member of my shop', someone_else: 'Another company or person' }).replace('data-k=', 'data-o=')}
+          <label>When it was made <input data-o="whenMade" value="${h(c.whenMade || 'made_to_order')}"><small>Etsy's own code, such as made_to_order or a range like 2020_2026.</small></label>
+          <label class="wide">Category <span class="row"><input id="taxQ" placeholder="Search Etsy categories, for example taxidermy" aria-label="Search Etsy categories"><button type="button" class="ghost" id="taxGo">Search</button></span><select data-o="taxonomyId" id="taxSel">${c.taxonomyId ? `<option value="${h(c.taxonomyId)}" selected>${h(c.taxonomyName || 'Category ' + c.taxonomyId)}</option>` : '<option value="">Search, then choose</option>'}</select></label>
+          <label class="tick wide"><input type="checkbox" data-o="live" ${c.live ? 'checked' : ''}> <span>Go live at once. Etsy charges its listing fee for each listing that goes live. Left off, listings are saved as drafts and you publish them on Etsy.</span></label></div>`;
+    } catch (e) { if (el.isConnected) el.innerHTML = `<p class="warnline">${h(e.message)}</p>`; } }
+  box.oninput = box.onchange = (e) => { const f = e.target.closest('[data-site]'), k = e.target.dataset.o; if (!f || !k) return; const c = s.channels[f.dataset.site] = s.channels[f.dataset.site] || {}; c[k] = e.target.type === 'checkbox' ? e.target.checked : e.target.value; if (k === 'taxonomyId') c.taxonomyName = e.target.selectedOptions[0] ? e.target.selectedOptions[0].textContent : ''; put(s); };
+  box.onclick = async (e) => { const t = e.target;
+    if (t.dataset.connect) { t.disabled = true; try { const r = await api('/market/connect/' + t.dataset.connect, { method: 'POST' }); location.href = r.url; } catch (x) { say(x.message, true); t.disabled = false; } }
+    if (t.dataset.disconnect) { if (!t.dataset.sure) { t.dataset.sure = 1; t.textContent = 'Click again to disconnect'; return; } await api('/market/disconnect/' + t.dataset.disconnect, { method: 'POST' }).catch(() => {}); MK = await api('/market/status').catch(() => MK); drawConn(); }
+    if (t.id === 'taxGo') { try { const r = await api('/market/options/etsy?q=' + encodeURIComponent($('#taxQ').value)); $('#taxSel').innerHTML = '<option value="">Choose</option>' + r.categories.map(x => `<option value="${h(x.id)}">${h(x.name)}</option>`).join(''); if (!r.categories.length) say('No Etsy category matches that.', true); } catch (x) { say(x.message, true); } } };
 }
 
 // ---- routing
@@ -265,6 +319,8 @@ function route() {
 (async () => {
   try {
     const j = await api('/all'); for (const o of j.objects) { if (o.type === 'settings') Object.assign(D.settings, o); else if (D[o.type]) D[o.type].push(o); }
-    $('#me').textContent = j.me; say(''); window.addEventListener('hashchange', route); route(); window.__desk = { D };
+    MK = await api('/market/status').catch(() => MK);
+    const back = new URLSearchParams(location.search).get('connect'); if (back) history.replaceState(null, '', location.pathname + location.hash);
+    $('#me').textContent = j.me; say(back || '', /did not|refused|tripped/.test(back || '')); window.addEventListener('hashchange', route); route(); window.__desk = { D, MK: () => MK };
   } catch (e) { main.innerHTML = `<h1>The desk did not load</h1><p>${h(e.message)}</p>`; }
 })();
