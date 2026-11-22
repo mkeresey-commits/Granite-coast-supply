@@ -58,3 +58,4 @@ code{font:13px ui-monospace,monospace;background:var(--glass);padding:1px 5px;bo
 button:disabled{opacity:.5;cursor:default}
 @media (max-width:460px){.optgrid{grid-template-columns:1fr}}
 .optgrid label.tick{display:flex;font-size:14px;color:var(--spruce)}.optgrid .wide{grid-column:1/-1}
+.takes{font-size:13px;font-weight:600;margin:4px 0}.takes.yes{color:var(--moss)}.takes.no{color:var(--rust)}.takes.ask{color:var(--brass)}.rule.no b{color:var(--rust)}

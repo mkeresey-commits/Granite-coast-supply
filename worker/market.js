@@ -2,7 +2,7 @@
 // The app keys are Cloudflare secrets the owner enters. The sign-in tokens each site hands back are kept in the
 // database and never sent to a page. Nothing here runs by itself: a person presses Post or Take down on the desk.
 import { checkProduct, realSpecies } from '../public/desk/lib/model.js';
-import { channel, listing } from '../public/desk/lib/channels.js';
+import { channel, listing, eligible } from '../public/desk/lib/channels.js';
 
 const J = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 const form = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== '').map(([k, v]) => [k, String(v)]));
@@ -174,6 +174,7 @@ export async function market(request, env, d, url, path) {
       p.channels = p.channels || {}; const cs = p.channels[site] || {};
       if (act === 'post') {
         const c = checkProduct(p); if (!c.ok || !p.ready) return J({ error: 'This piece is not ready: ' + (c.blockers[0] || 'mark it ready first.') }, 409);
+        const el = eligible(p, channel(site), { ...set, channels: { ...(set.channels || {}), ebay: { category: 'x', ...((set.channels || {}).ebay || {}) } } }); if (!el.ok) return J({ error: el.blockers[0] }, 409);
         if (cs.status === 'listed' && (cs.offerId || cs.listingId)) return J({ error: 'Already listed there.' }, 409);
         if (site === 'etsy' && cs.listingId && cs.status !== 'sold') return J({ error: 'This piece already has a listing on Etsy, as a draft or switched off. Open it there.' }, 409);
         const res = await SITES[site].post(env, d, B, p, set, url.origin);

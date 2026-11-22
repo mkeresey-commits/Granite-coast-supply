@@ -27,6 +27,8 @@ A pipeline for getting handmade curiosities (mounted butterflies, cloches, natur
 - A real specimen needs its scientific name before it can be marked ready. A species listed under the Endangered Species Act or CITES Appendix I can never be marked ready.
 - Listings say only what is on the record. Nothing about sourcing is claimed unless it was entered. No invented reviews, numbers or credentials.
 - A marketplace rule is stated only with its source link and the date it was read. A site that was not checked says "not confirmed".
+- No assumptions about what a site allows. A real specimen is held back from a site only when the owner sets that site to "does not take them" under Settings. A site whose rules were not confirmed posts with a warning.
+- A made butterfly (paper, silk, resin) is described as made, never as real. A piece and its version with no real specimen are linked by `twinId`.
 - Nothing sends email. Nothing is posted to a marketplace unless a person presses Post on the desk. One thing happens without a press: when an order is marked delivered and a one of a kind piece is gone, its listings posted from the desk are taken down.
 - Nothing loads from another company: no outside fonts, scripts or trackers. No inline script or inline style; the security header forbids both.
 - No `prompt()`, `alert()` or `confirm()`.

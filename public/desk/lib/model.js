@@ -33,7 +33,7 @@ export const today = () => new Date().toLocaleDateString('en-CA');
 export function blankProduct(sku) {
   return { type: 'product', id: newId('p'), sku, makerId: '', name: '', kind: 'dome', blurb: '', materials: '', h: '', w: '', d: '', oz: '', species: [], cost: '', wholesale: '', retail: '', casePack: 1, minOrder: 1, stock: 1, oneOff: true, photos: [], tags: '', ready: false, public: false, channels: {} };
 }
-export const blankSpecies = () => ({ common: '', scientific: '', origin: '', source: '', supplier: '', paper: '', cites: 'none', esa: false, real: true });
+export const blankSpecies = () => ({ common: '', scientific: '', origin: '', source: '', supplier: '', paper: '', cites: 'none', esa: false, real: true, madeOf: '' });
 export const blankStore = () => ({ type: 'store', id: newId('s'), name: '', town: '', st: 'ME', region: REGIONS[0], kind: '', contact: '', phone: '', email: '', site: '', stage: 'Lead', terms: 'wholesale', split: 60, net: 0, next: '', due: '', notes: [] });
 export const blankOrder = (storeId, terms = 'wholesale') => ({ type: 'order', id: newId('o'), storeId, terms, date: today(), deliverBy: '', method: 'drive', step: 'Draft', lines: [], note: '' });
 
@@ -58,6 +58,18 @@ export const afterFee = (price, feePct) => n(price) * (1 - n(feePct) / 100);
 
 export const sizeWords = (p) => { const s = [p.h && `${p.h} in high`, p.w && `${p.w} in wide`, p.d && `${p.d} in deep`].filter(Boolean); return s.join(', '); };
 export const realSpecies = (p) => (p.species || []).filter(s => s.real !== false);
+// the made ones: paper, silk, resin. They need no species papers, but the listing must say what they are.
+export const madeSpecies = (p) => (p.species || []).filter(s => s.real === false);
+// two lanes: a piece with any real specimen, and a piece with none
+export const lane = (p) => realSpecies(p).length ? 'real' : 'free';
+export const LANES = { real: 'Real specimen', free: 'No real specimen' };
+// the other version of the same design, if there is one, in either direction
+export const twinsOf = (p, products) => products.filter(x => x.id !== p.id && (x.id === p.twinId || x.twinId === p.id));
+// a specimen-free copy of a piece: same design and words, its own stock number, no photos (they must show the real thing sold)
+export function freeCopy(p, sku) {
+  return { ...blankProduct(sku), makerId: p.makerId, name: p.name, kind: p.kind, blurb: p.blurb, materials: p.materials, h: p.h, w: p.w, d: p.d, oz: p.oz, tags: p.tags, oneOff: false, stock: 0, twinId: p.id,
+    species: (p.species || []).map(x => ({ ...blankSpecies(), common: x.common, real: false, madeOf: x.real === false ? x.madeOf || '' : '' })) };
+}
 
 // can this piece be offered at all. A blocker stops it being marked ready; a warning does not.
 export function checkProduct(p) {
@@ -77,6 +89,7 @@ export function checkProduct(p) {
     if (s.source === 'wild') warnings.push(`${label}: wild collected. Some shops and marketplaces will not take it.`);
     if (!String(s.paper || '').trim()) warnings.push(`${label}: no supplier paper on file.`);
   }
+  for (const s of madeSpecies(p)) if (!String(s.madeOf || '').trim()) warnings.push(`${s.common || 'A made specimen'}: say what it is made of, so the listing can.`);
   if (n(p.wholesale) && n(p.cost) && n(p.wholesale) <= n(p.cost)) warnings.push('The wholesale price does not cover the cost.');
   return { ok: !blockers.length, blockers, warnings };
 }
@@ -134,6 +147,7 @@ export function todayList({ products = [], stores = [], orders = [] }, channels 
 export function publicProduct(p, makers = []) {
   const m = makers.find(x => x.id === p.makerId);
   return { id: p.id, name: p.name, kind: KINDS[p.kind] || KINDS.other, blurb: p.blurb || '', materials: p.materials || '', size: sizeWords(p), oneOff: !!p.oneOff, photos: (p.photos || []).slice(0, 8),
+    real: realSpecies(p).length > 0, made: madeSpecies(p).map(s => ({ common: s.common || '', madeOf: s.madeOf || '' })),
     species: realSpecies(p).map(s => ({ common: s.common || '', scientific: s.scientific || '', origin: s.origin || '', source: s.source && s.source !== 'wild' ? SOURCES[s.source] : '' })), maker: m && m.showName ? m.name : '' };
 }
 export const isPublic = (p) => !!(p.ready && p.public && checkProduct(p).ok);

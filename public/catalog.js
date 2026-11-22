@@ -14,7 +14,7 @@ const list = document.getElementById('list'), empty = document.getElementById('e
     const s = p.species[0], where = [...new Set(p.species.map(x => x.origin).filter(Boolean))].join(', ');
     return `<li class="piece"><div class="dome">${p.photos[0] ? `<img src="/img/${esc(p.photos[0])}.jpg" alt="${esc(p.name)}" width="800" height="1000" ${i > 3 ? 'loading="lazy"' : ''}>` : ''}</div><div class="base"></div>
       <div class="tag"><h3>${esc(p.name)}</h3>${s && s.scientific ? `<span class="bi">${esc(p.species.map(x => x.scientific).filter(Boolean).join(', '))}</span>` : ''}
-      <span class="meta">${esc([p.kind, where, p.oneOff ? 'One of a kind' : ''].filter(Boolean).join(' · '))}</span>${p.size ? `<span class="meta">${esc(p.size)}</span>` : ''}${p.maker ? `<span class="meta">Made by ${esc(p.maker)}</span>` : ''}
+      <span class="meta">${esc([p.kind, where, p.oneOff ? 'One of a kind' : ''].filter(Boolean).join(' · '))}</span>${p.size ? `<span class="meta">${esc(p.size)}</span>` : ''}${!p.real && p.made && p.made.length ? `<span class="meta">${esc(p.made.map(m => [m.common, m.madeOf && 'made of ' + m.madeOf].filter(Boolean).join(', ')).join('; '))}. No real specimen.</span>` : ''}${p.maker ? `<span class="meta">Made by ${esc(p.maker)}</span>` : ''}
       ${p.blurb ? `<p class="more">${esc(p.blurb)}</p>` : ''}</div></li>`;
   }).join('');
 })();

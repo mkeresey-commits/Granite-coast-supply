@@ -2,26 +2,38 @@
 // title, description, tags and file, cut to that channel's limits. Plain logic, tested in tools/smoke.mjs.
 // Rules for real specimens were read from each marketplace's own policy page on the date shown. Rules change:
 // the page links the source so it can be read again before a first listing.
-import { KINDS, SOURCES, sizeWords, realSpecies, checkProduct } from './model.js';
+import { KINDS, SOURCES, sizeWords, realSpecies, madeSpecies, checkProduct } from './model.js';
 
 const CHECKED = '2026-11-21';
 export const CHANNELS = [
-  { id: 'etsy', name: 'Etsy', lane: 'Shoppers', how: 'paste', title: 140, tags: 13, tagLen: 20, materials: 13,
+  { id: 'etsy', real: 'yes', name: 'Etsy', lane: 'Shoppers', how: 'paste', title: 140, tags: 13, tagLen: 20, materials: 13,
     rule: { state: 'conditions', text: 'Etsy bans anything made from species listed under the Endangered Species Act or CITES Appendix I. Its rules page does not mention insects, so other species are not banned by name.', src: 'https://www.etsy.com/legal/prohibited', on: CHECKED },
     steps: ['Etsy has no file upload for new listings, so each piece is pasted in once.', 'Open Shop Manager, Listings, Add a listing.', 'Copy each field below into the matching box, add the photos, and publish.', 'Paste the listing link back here so the piece shows as listed.'] },
-  { id: 'ebay', name: 'eBay', lane: 'Shoppers', how: 'file', title: 80,
+  { id: 'ebay', real: 'yes', name: 'eBay', lane: 'Shoppers', how: 'file', title: 80,
     rule: { state: 'conditions', text: 'eBay allows items from animals that are not endangered or threatened, and the listing must name the species. CITES Appendix II species cannot be offered with international shipping. It notes that many butterflies used in display mounts are CITES species.', src: 'https://www.ebay.com/help/policies/prohibited-restricted-items/animal-products-policy?id=5046', on: CHECKED },
     steps: ['Fill in the eBay category number and your three business policy names under Settings first.', 'Download the file below.', 'In Seller Hub open Reports, Uploads, and upload it.', 'Upload one piece the first time and read the result file eBay sends back before sending the rest.'] },
-  { id: 'faire', name: 'Faire', lane: 'Stores', how: 'file',
+  { id: 'faire', real: 'yes', name: 'Faire', lane: 'Stores', how: 'file',
     rule: { state: 'conditions', text: 'Faire permits leather and other materials from animals that are not endangered. It does not take fine art or used goods, so one of a kind pieces may be turned down. It wants a wholesale price, a retail price, a case quantity and a minimum order for every product.', src: 'https://www.faire.com/support/articles/360015893192', on: CHECKED },
     steps: ['Faire takes a catalog file in any clear layout and its team maps the columns.', 'Download the file below and upload it on the Products page, or in the sign-up form if the shop is new.', 'Photos load from the links in the file.'] },
-  { id: 'shopify', name: 'Shopify-format file', lane: 'Your own store', how: 'file',
+  { id: 'shopify', real: 'yes', name: 'Shopify-format file', lane: 'Your own store', how: 'file',
     rule: { state: 'yours', text: 'Your own store, your own rules. This is the standard product file Shopify reads, and many other tools accept the same layout.', src: 'https://help.shopify.com/en/manual/products/import-export/using-csv', on: CHECKED },
     steps: ['Use this if you open your own store, or for any site that says it imports a Shopify product file.', 'Products arrive as drafts so nothing goes live by accident.'] },
-  { id: 'meta', name: 'Facebook Marketplace and Instagram', lane: 'Shoppers', how: 'paste', title: 99,
+  { id: 'meta', real: 'ask', name: 'Facebook Marketplace and Instagram', lane: 'Shoppers', how: 'paste', title: 99,
     rule: { state: 'unchecked', text: 'Not confirmed. Meta restricts animal products and its policy page did not load when checked. Read its commerce rules before listing a real specimen.', src: 'https://transparency.meta.com/policies/ad-standards/restricted-goods-services/live-endangered-nonendangered-animals/', on: CHECKED },
     steps: ['Paste each field into a new Marketplace listing.'] },
-  { id: 'other', name: 'Any other site', lane: 'Shoppers', how: 'paste',
+  { id: 'tiktok', real: 'ask', name: 'TikTok Shop', lane: 'Shoppers', how: 'paste',
+    rule: { state: 'unchecked', text: 'Not confirmed. TikTok\'s advertising policy bars promoting animal parts, but it does not name insects, and its separate Shop product rules were not read.', src: 'https://ads.tiktok.com/help/article/tiktok-ads-policy-animals-and-environment', on: CHECKED },
+    steps: ['Paste each field into a new product in Seller Center.'] },
+  { id: 'amazon', real: 'ask', name: 'Amazon Handmade', lane: 'Shoppers', how: 'paste', title: 200,
+    rule: { state: 'unchecked', text: 'Not confirmed. Mounted butterflies are listed for sale on Amazon. Its policy page for animal products did not load when checked, so the exact rule was not read. Handmade also needs an approved application.', src: 'https://sellercentral.amazon.com/gp/help/external/200164370', on: CHECKED },
+    steps: ['Paste each field into a new Handmade listing.'] },
+  { id: 'michaels', real: 'ask', name: 'Michaels MakerPlace', lane: 'Shoppers', how: 'paste',
+    rule: { state: 'unchecked', text: 'Not confirmed. Its product policy does not mention animal products. It removes items it judges are not meant for arts, crafts and creativity.', src: 'https://www.michaels.com/product-policy', on: CHECKED },
+    steps: ['Paste each field into a new MakerPlace listing.'] },
+  { id: 'resale', real: 'ask', name: 'Vinted, Depop, Poshmark, Mercari', lane: 'Shoppers', how: 'paste',
+    rule: { state: 'unchecked', text: 'Not read. These are resale apps with no posting access for ordinary sellers, so they stay copy and paste.', src: '', on: CHECKED },
+    steps: ['Paste each field into a new listing in the app.'] },
+  { id: 'other', real: 'ask', name: 'Any other site', lane: 'Shoppers', how: 'paste',
     rule: { state: 'unchecked', text: 'Read the site\'s rules on animal products before listing a real specimen. If a site is worth adding here with its own limits, say so and it gets its own row.', src: '', on: CHECKED },
     steps: ['A plain listing with no length limits. Copy what the site asks for.'] },
 ];
@@ -47,6 +59,8 @@ export function descriptionFor(p, set = {}) {
   if (sizeWords(p)) d.push('Size: ' + sizeWords(p) + '.');
   if (clean(p.materials)) d.push('Materials: ' + clean(p.materials) + '.');
   for (const s of sp) { const bits = [s.common && s.scientific ? `${s.common} (${s.scientific})` : s.common || s.scientific, s.origin && 'from ' + s.origin, s.source && s.source !== 'wild' && SOURCES[s.source].toLowerCase()].filter(Boolean); if (bits.length) d.push('Specimen: ' + bits.join(', ') + '.'); }
+  for (const m of madeSpecies(p)) d.push(`${m.common || 'The specimen'}${m.madeOf ? ' made of ' + clean(m.madeOf) : ''}: made by hand, not a real specimen.`);
+  if (!sp.length && (p.species || []).length) d.push('No real insect or animal is used in this piece.');
   if (sp.length) d.push('This is a real specimen. No two are identical, so markings will differ slightly from the photos.');
   if (p.oneOff) d.push('One of a kind.');
   if (clean(set.care)) d.push(clean(set.care));
@@ -56,10 +70,15 @@ export function descriptionFor(p, set = {}) {
 
 export function tagsFor(p, ch) {
   const sp = realSpecies(p), seen = new Set(), out = [];
-  const raw = [...String(p.tags || '').split(','), ...sp.map(s => s.common), (KINDS[p.kind] || ''), ...(sp.length ? ['real specimen', 'entomology', 'natural history'] : []), 'oddities', 'curiosity cabinet', 'oddity decor', 'gothic decor', 'gift for collector'];
+  const raw = [...String(p.tags || '').split(','), ...sp.map(s => s.common), (KINDS[p.kind] || ''), ...(sp.length ? ['real specimen', 'entomology', 'natural history'] : madeSpecies(p).length ? ['faux specimen', 'no real insects', ...madeSpecies(p).map(m => m.common)] : []), 'oddities', 'curiosity cabinet', 'oddity decor', 'gothic decor', 'gift for collector'];
   for (let t of raw) { t = clean(t).toLowerCase(); if (!t || (ch.tagLen && t.length > ch.tagLen) || seen.has(t)) continue; seen.add(t); out.push(t); if (ch.tags && out.length >= ch.tags) break; }
   return out;
 }
+
+// does this site take real specimens: 'yes', 'ask' (rules not confirmed: allowed, with a warning) or 'no'.
+// Nothing is held back on a guess. A site is 'no' only when the owner sets it under Settings.
+export const takesReal = (ch, set = {}) => ((set.channels || {})[ch.id] || {}).real || ch.real || 'ask';
+export const REAL_WORDS = { yes: 'Takes real specimens', no: 'No real specimens: you set this', ask: 'Rules not confirmed: posts with a warning' };
 
 // can this piece go on this channel
 export function eligible(p, ch, set = {}) {
@@ -71,7 +90,9 @@ export function eligible(p, ch, set = {}) {
     if (p.oneOff) warnings.push('One of a kind. Faire wants products a store can reorder, so it may turn this down.');
   } else if (ch.lane !== 'Stores' && !+p.retail) blockers.push('Set a retail price.');
   if (ch.id === 'ebay') { if (!cs.category) blockers.push('Set the eBay category number under Settings.'); if (realSpecies(p).some(s => s.cites === 'II')) warnings.push('CITES Appendix II: offer United States shipping only on eBay.'); }
-  if (ch.rule.state === 'unchecked' && realSpecies(p).length) warnings.push('This site\'s rules for real specimens are not confirmed. Read them first.');
+  if (realSpecies(p).length) { const t = takesReal(ch, set);
+    if (t === 'no') blockers.push(`${ch.name} does not take real specimens. Offer the version with no real specimen there.`);
+    else if (t === 'ask') warnings.push('This site\'s rules for real specimens are not confirmed. Read them first.'); }
   return { ok: !blockers.length, blockers, warnings };
 }
 

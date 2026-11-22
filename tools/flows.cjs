@@ -78,6 +78,22 @@ async function desk(browser, name, opts, port, photo, first) {
   await page.goto(B + '/desk/#today'); ok(await until(page, (t) => [...document.querySelectorAll('.todo li')].some(l => l.textContent.includes('Made-up Shop ' + t) && /owes \$96\.00/.test(l.textContent)), 8000, tag), `${name}: Today lists the money the store owes`);
   await page.goto(B + '/desk/#sheet'); ok(await until(page, () => !!document.querySelector('.line')) && /Not for the public/.test(await page.textContent('#main')) && /\$48\.00/.test(await page.textContent('.line')), `${name}: the line sheet shows wholesale prices and says it is not for the public`);
 
+  // two lanes: a real piece, and a version with no real specimen
+  if (first) {
+    const pid = await page.evaluate((t) => window.__desk.D.product.find(p => p.name.includes(t)).id, tag);
+    await page.goto(B + '/desk/#post'); ok(await until(page, () => document.querySelectorAll('.card .takes').length >= 9) && !/held back/i.test(await page.textContent('.cards')), `${name}: every site says whether it takes real specimens, and none is held back on a guess`);
+    await page.goto(B + '/desk/#piece/' + pid); ok(await until(page, () => /Real specimen\./.test(document.querySelector('#pVer').textContent) && /Every site on the list takes it/.test(document.querySelector('#pVer').textContent)), `${name}: a real piece says it can go on every site`);
+    await page.goto(B + '/desk/#settings'); await page.selectOption('fieldset[data-ch="amazon"] select[data-c="real"]', 'no'); await saved();
+    await page.goto(B + '/desk/#piece/' + pid); ok(await until(page, () => /Held back from Amazon Handmade/.test(document.querySelector('#pVer').textContent)), `${name}: once a site is set to take no real specimens, the piece says it is held back there`);
+    await page.goto(B + '/desk/#post/amazon'); ok(await until(page, () => /does not take real specimens/.test(document.querySelector('#main').textContent)), `${name}: that site's page holds the real piece back and says why`);
+    await page.goto(B + '/desk/#piece/' + pid); await until(page, () => !!document.querySelector('#pFree')); await page.click('#pFree');
+    ok(await until(page, (id) => !location.hash.includes(id) && !!document.querySelector('.sp input[data-k="madeOf"]'), 8000, pid), `${name}: a version with no real specimen opens as its own piece, asking what it is made of`);
+    const copy = await page.evaluate(() => ({ ver: document.querySelector('#pVer').textContent, real: document.querySelector('.sp input[data-k="real"]').checked, photos: document.querySelectorAll('#pPhotos img').length, sku: document.querySelector('#main p.quiet').textContent }));
+    ok(/No real specimen\./.test(copy.ver) && /It can go on every site/.test(copy.ver) && /Real specimen version/.test(copy.ver) && !copy.real && copy.photos === 0 && /GCS-\d{4}/.test(copy.sku), `${name}: the copy is linked to the original, is not marked real, and starts with no photos`);
+    await page.fill('.sp input[data-k="madeOf"]', 'hand-cut paper'); await saved(); await page.click('#pDrop'); await page.click('#pDrop'); await page.waitForTimeout(500);
+    await page.goto(B + '/desk/#settings'); await page.selectOption('fieldset[data-ch="amazon"] select[data-c="real"]', ''); await saved();
+  }
+
   // it all comes back after a reload
   await page.reload(); await until(page, () => !!window.__desk);
   const back = await page.evaluate((t) => { const D = window.__desk.D; return { p: D.product.filter(p => p.name.includes(t)).length, s: D.store.filter(s => s.name.includes(t)).length, o: D.order.length, listed: D.product.find(p => p.name.includes(t)).channels.etsy.status }; }, tag);
