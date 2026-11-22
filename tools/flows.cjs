@@ -55,7 +55,7 @@ async function desk(browser, name, opts, port, photo, first) {
   await page.fill('.sheet:last-of-type .done input', 'https://www.etsy.com/listing/1/made-up'); await page.click('.sheet:last-of-type [data-listed]');
   ok(await until(page, (t) => [...document.querySelectorAll('#main li')].some(l => l.textContent.includes(t) && /Open the listing/.test(l.textContent)), 8000, tag), `${name}: marking it listed moves it to the listed pieces with its link`);
   if (first) { await page.goto(B + '/desk/#post/ebay'); ok(await until(page, () => /Set the eBay category number under Settings/.test(document.querySelector('#main').textContent)), `${name}: eBay holds the piece back until its category is set`); }
-  await page.goto(B + '/desk/#settings'); await page.fill('fieldset[data-ch="ebay"] input[data-c="category"]', '12345'); await page.fill('input[data-k="publicEmail"]', 'shops@example.com'); await saved();
+  await page.goto(B + '/desk/#settings'); await page.fill('fieldset[data-ch="ebay"] input[data-c="category"]', '12345'); await page.fill('input[data-k="publicEmail"]', 'shops@example.com'); await page.fill('input[data-k="legalName"]', 'Made-up Parent LLC'); await saved();
   await page.goto(B + '/desk/#post/ebay'); ok(await until(page, () => !!document.querySelector('#chFile')), `${name}: with the category set, eBay offers its file`);
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#chFile')]), file = readFileSync(await dl.path(), 'utf8');
   ok(dl.suggestedFilename() === 'ebay-upload.csv' && file.startsWith('*Action(SiteID=US') && file.includes('Made-up morpho dome') && /\/img\/[a-f0-9]{24}\.jpg/.test(file) && file.includes('98.00'), `${name}: the eBay file downloads with the piece, a photo link and the price`);
@@ -76,7 +76,8 @@ async function desk(browser, name, opts, port, photo, first) {
   const after = await page.evaluate((t) => { const D = window.__desk.D; return { stock: D.product.find(p => p.name.includes(t)).stock, stage: D.store.find(s => s.name.includes(t)).stage }; }, tag);
   ok(after.stock === 1 && after.stage === 'Stocked', `${name}: delivering takes two out of stock and makes the store an account (${after.stock}, ${after.stage})`);
   await page.goto(B + '/desk/#today'); ok(await until(page, (t) => [...document.querySelectorAll('.todo li')].some(l => l.textContent.includes('Made-up Shop ' + t) && /owes \$96\.00/.test(l.textContent)), 8000, tag), `${name}: Today lists the money the store owes`);
-  await page.goto(B + '/desk/#sheet'); ok(await until(page, () => !!document.querySelector('.line')) && /Not for the public/.test(await page.textContent('#main')) && /\$48\.00/.test(await page.textContent('.line')), `${name}: the line sheet shows wholesale prices and says it is not for the public`);
+  await page.goto(B + '/desk/#sheet'); ok(await until(page, () => !!document.querySelector('.line')) && /Not for the public/.test(await page.textContent('#main')) && /Make payment to Made-up Parent LLC/.test(await page.textContent('#main')) && /\$48\.00/.test(await page.textContent('.line')), `${name}: the line sheet shows wholesale prices, names the company to pay, and says it is not for the public`);
+  ok(!(await (await fetch(B + '/api/catalog')).text()).includes('Made-up Parent') && !(await (await fetch(B + '/')).text()).includes('Made-up Parent'), `${name}: the legal name never reaches the public catalog`);
 
   // two lanes: a real piece, and a version with no real specimen
   if (first) {

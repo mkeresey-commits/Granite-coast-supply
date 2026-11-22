@@ -22,6 +22,7 @@ A pipeline for getting handmade curiosities (mounted butterflies, cloches, natur
 ## Rules that never bend
 - Private stays private. Costs, wholesale prices, stock, suppliers, papers, store names and notes never appear in the public catalog, the public feed or this repository. Never weaken the login check to "make it work".
 - No keys, tokens, passwords, emails or names of people in the repository.
+- The seller's legal name is a desk setting kept in the database. It prints on the private line sheet and order slips only, never in the public catalog and never in this repository.
 - No em dashes anywhere. Plain voice. No owner name. One brand: Granite Coast Supply.
 - The public catalog shows no prices and has no buttons. Contact is a mail link in the copy, shown only when an email is set on the desk.
 - A real specimen needs its scientific name before it can be marked ready. A species listed under the Endangered Species Act or CITES Appendix I can never be marked ready.
